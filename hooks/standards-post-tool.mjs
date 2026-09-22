@@ -26,21 +26,31 @@ async function main() {
   const input = payload.tool_input ?? payload.toolInput ?? {}
   const candidates = [input.file_path, input.filePath, input.path, input.notebook_path]
   const filePath = candidates.find((v) => typeof v === 'string' && v.length > 0)
-  if (!filePath) process.exit(0)
-
   const cwd = typeof payload.cwd === 'string' ? payload.cwd : process.cwd()
-  const abs = resolve(cwd, filePath)
-  const projectRoot = findProjectRoot(dirname(abs), cwd)
-  if (!projectRoot) process.exit(0)
-  const rel = relative(projectRoot, abs)
-  if (rel.startsWith('..')) process.exit(0) // правка вне проекта
 
   const violations = []
-  for (const std of loadManifest().standards) {
-    for (const check of std.checks ?? []) {
-      if (!pathMatches(check.paths, rel)) continue
-      const { errors } = runCheck(check.check, projectRoot)
-      for (const e of errors) violations.push(`[${std.id}] ${e}`)
+  if (filePath) {
+    const abs = resolve(cwd, filePath)
+    const projectRoot = findProjectRoot(dirname(abs), cwd)
+    if (!projectRoot) process.exit(0)
+    const rel = relative(projectRoot, abs)
+    if (rel.startsWith('..')) process.exit(0) // правка вне проекта
+    for (const std of loadManifest().standards) {
+      for (const check of std.checks ?? []) {
+        if (!pathMatches(check.paths, rel)) continue
+        const { errors } = runCheck(check.check, projectRoot)
+        for (const e of errors) violations.push(`[${std.id}] ${e}`)
+      }
+    }
+  } else {
+    // TBD-контроль: агент коммитит — проверяем модель ветвления.
+    const command = typeof input.command === 'string' ? input.command : ''
+    if (/\bgit\b\s+\w*\s*commit\b/.test(command)) {
+      const projectRoot = findProjectRoot(cwd, cwd)
+      if (projectRoot) {
+        const { errors } = runCheck('check-tbd', projectRoot)
+        for (const e of errors) violations.push(`[tbd] ${e}`)
+      }
     }
   }
   if (violations.length === 0) process.exit(0)
@@ -48,7 +58,7 @@ async function main() {
   const additionalContext =
     `[dev-standards] Нарушения стандартов:\n` +
     violations.map((v) => `  ${v}`).join('\n') +
-    `\nИсправь нарушения в этом же ходу. Подробности правил: skills \`api-spec\`, \`component-tests\`.`
+    `\nИсправь нарушения в этом же ходу. Подробности правил: skills api-spec, component-tests, modules, tbd.`
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {

@@ -1,12 +1,12 @@
 {
-  "$comment": "Манифест стандартов dev-standards (MVP). JSON — валидный подсет YAML: так все скрипты остаются zero-dep. enforcement: script | model | hybrid; paths — glob-маппинг «изменённый файл → какие проверки запускать».",
-  "version": "0.1.0",
+  "$comment": "Манифест стандартов dev-standards. JSON — валидный подсет YAML: так все скрипты остаются zero-dep. enforcement: script | model | hybrid; paths — glob-маппинг «изменённый файл → какие проверки запускать»; проверки без paths (tbd) запускаются из run-all/pre-commit и хуком по git commit.",
+  "version": "0.2.0",
   "standards": [
     {
       "id": "api-spec",
       "enforcement": "hybrid",
       "guidance": "skills/api-spec/SKILL.md",
-      "summary": "API-спека первична и заморожена",
+      "summary": "API First: контракт первичен и заморожен",
       "checks": [
         {
           "check": "check-api-spec",
@@ -19,11 +19,38 @@
       "id": "component-tests",
       "enforcement": "hybrid",
       "guidance": "skills/component-tests/SKILL.md",
-      "summary": "Компонентные тесты — исполняемая спецификация",
+      "summary": "Компонентные тесты — исполняемая спецификация по формуле",
       "checks": [
         {
           "check": "check-component-tests",
           "paths": ["component-tests/**", "docs/design/**"],
+          "severity": "warn"
+        }
+      ]
+    },
+    {
+      "id": "modules",
+      "enforcement": "hybrid",
+      "guidance": "skills/modules/SKILL.md",
+      "summary": "Модуль = один вход, один выход",
+      "checks": [
+        {
+          "check": "check-modules",
+          "paths": ["internal/**"],
+          "severity": "warn"
+        }
+      ]
+    },
+    {
+      "id": "tbd",
+      "enforcement": "hybrid",
+      "guidance": "skills/tbd/SKILL.md",
+      "summary": "Trunk-Based Development",
+      "checks": [
+        {
+          "check": "check-tbd",
+          "paths": [],
+          "trigger": "git-commit",
           "severity": "warn"
         }
       ]

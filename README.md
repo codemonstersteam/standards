@@ -6,18 +6,22 @@
 
 ## Что это
 
-Два требования стандарта, каждое с **model-частью** (скилл — «где и как»)
+Пять требований стандарта, каждое с **model-частью** (скилл — «где и как»)
 и **script-частью** (детерминированный валидатор, exit 0/1):
 
 | Требование | Guidance | Проверка |
 |---|---|---|
-| API-спека первична и заморожена | [skills/api-spec](skills/api-spec/SKILL.md) | `checks/check-api-spec.mjs` — файл `api-specification/openapi.yaml` существует, `openapi: 3.x`, в `paths:` есть пути, есть `responses:`, маркер `x-frozen:` |
-| Компонентные тесты — исполняемая спецификация | [skills/component-tests](skills/component-tests/SKILL.md) | `checks/check-component-tests.mjs` — `component-tests/features/*.feature`: все бизнес-сценарии `@wip`, есть `@smoke`, нет дублей названий, число сценариев = формуле `N = 1 + Σ` из `docs/design/**/contracts.md` (мягкий пропуск, если не объявлена) |
+| API First: спека первична и заморожена | [skills/api-spec](skills/api-spec/SKILL.md) | `check-api-spec` — `api-specification/openapi.yaml` существует, `openapi: 3.x`, в `paths:` есть пути, есть `responses:`, маркер `x-frozen:` |
+| Компонентные тесты по формуле | [skills/component-tests](skills/component-tests/SKILL.md) | `check-component-tests` — `component-tests/**/*.feature`: все бизнес-сценарии `@wip`, есть `@smoke`, нет дублей, число сценариев = формуле `N = 1 + Σ` из `docs/design/**/contracts.md` (мягкий пропуск, если не объявлена) |
+| Модули: один вход, один выход | [skills/modules](skills/modules/SKILL.md) | `check-modules` — в каждом `internal/<slug>/` ровно одна точка входа (index/handler/request/usecase); `internal/shared/` — исключение |
+| TBD (trunk-based development) | [skills/tbd](skills/tbd/SKILL.md) | `check-tbd` — нет коммитов напрямую в trunk/main/master; дифф feature-ветки ≤ 600 строк; ветка живёт ≤ 2 дней (запускается из `run-all`, pre-commit и хуком при `git commit`) |
 
-Разделение «что скриптами, что модели» декларировано данными —
-[standards.json](standards.json) (JSON — валидный подсет YAML; так скрипты
-zero-dep): per-standard `enforcement`, glob-маппинг «изменённый файл → какие
-проверки запускать».
+[AGENTS.md](AGENTS.md) — эталон стандарта: краткая инструкция модели; `install.sh`
+доставляет его в проект как managed-блок. Разделение «что скриптами, что модели»
+декларировано данными — [standards.json](standards.json): per-standard
+`enforcement`, glob-маппинг «изменённый файл → какие проверки запускать»
+(TBD — по триггеру `git commit`). `node checks/run-all.mjs <проект>` — все
+проверки одной командой.
 
 ## Быстрое подключение к проекту
 
@@ -47,7 +51,7 @@ git clone <этот-репозиторий> && cd dev-standards
 ## Проверка репозитория
 
 ```bash
-node test/run.mjs   # 39 проверок: чекеры, hook, плагин, install (идемпотентность, zcode-merge)
+node test/run.mjs   # 55 проверок: чекеры (вкл. TBD в реальном git-репо), hook, плагин, run-all, install (идемпотентность, zcode-merge)
 ```
 
 ## Разработка этого репозитория

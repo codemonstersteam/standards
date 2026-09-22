@@ -8,6 +8,8 @@ set -euo pipefail
 SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)" # корень репозитория стандартов
 HOOK="$SH/hooks/standards-post-tool.mjs"
 PLUGIN_REL="./.opencode/plugins/standards-guard.mjs"
+# Список скиллов берём из манифеста — новые стандарты подхватываются автоматически
+SKILLS="$(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(m.standards.filter(s=>s.guidance).map(s=>s.id).join(" "))' "$SH/standards.json")"
 
 PROJ=""
 PRE_COMMIT=0
@@ -33,11 +35,11 @@ has_target zcode && EXTRA="${EXTRA:+$EXTRA + }zcode"
 # dsh: .agents/skills (ранг 200); opencode: .opencode/skills; zcode: ~/.zcode/skills (user-уровень)
 if has_target dsh; then
   mkdir -p "$PROJ/.agents/skills"
-  for s in api-spec component-tests; do ln -sfn "$SH/skills/$s" "$PROJ/.agents/skills/$s"; done
+  for s in $SKILLS; do ln -sfn "$SH/skills/$s" "$PROJ/.agents/skills/$s"; done
 fi
 if has_target opencode; then
   mkdir -p "$PROJ/.opencode/skills"
-  for s in api-spec component-tests; do ln -sfn "$SH/skills/$s" "$PROJ/.opencode/skills/$s"; done
+  for s in $SKILLS; do ln -sfn "$SH/skills/$s" "$PROJ/.opencode/skills/$s"; done
 fi
 
 # ---------- AGENTS.md: managed-блок = эталон AGENTS.md этого репозитория ----------
@@ -124,21 +126,20 @@ fi
 # ---------- zcode: скиллы в ~/.zcode/skills + hooks в user-конфиг ----------
 if has_target zcode; then
   mkdir -p "$HOME/.zcode/skills" "$HOME/.zcode/cli"
-  for s in api-spec component-tests; do
+  for s in $SKILLS; do
     ln -sfn "$SH/skills/$s" "$HOME/.zcode/skills/$s"
   done
   node "$SH/tools/merge-config.mjs" zcode "$HOME/.zcode/cli/config.json" "node '$HOOK'"
 fi
 
-# ---------- pre-commit (опция): обе проверки до коммита ----------
+# ---------- pre-commit (опция): все проверки манифеста до коммита ----------
 if [ "$PRE_COMMIT" = 1 ]; then
   mkdir -p "$PROJ/.git/hooks"
   cat > "$PROJ/.git/hooks/pre-commit" <<EOF
 #!/usr/bin/env bash
-# dev-standards: детерминированные проверки до коммита
+# dev-standards: детерминированные проверки до коммита (все стандарты манифеста)
 set -e
-node "$SH/checks/check-api-spec.mjs" "$PROJ"
-node "$SH/checks/check-component-tests.mjs" "$PROJ"
+node "$SH/checks/run-all.mjs" "$PROJ"
 EOF
   chmod +x "$PROJ/.git/hooks/pre-commit"
 fi

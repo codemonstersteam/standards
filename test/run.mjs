@@ -3,7 +3,7 @@
 // opencode-плагин напрямую, install.sh во временный каталог с подменным HOME.
 // Запуск: node test/run.mjs   (exit 0 = всё зелёное)
 import { spawnSync } from 'node:child_process'
-import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -47,6 +47,72 @@ const count = (s, needle) => s.split(needle).length - 1
   ok(badCt.stderr.includes('smoke'), 'check-component-tests: bad упоминает smoke')
   ok(badCt.stderr.includes('N=6'), 'check-component-tests: bad сверяет N=6', badCt.stderr)
   ok(badCt.stderr.includes('happy path» встречается 2'), 'check-component-tests: bad ловит дубль названия')
+}
+
+// ---------- 1b. Новые стандарты: modules, tbd, run-all ----------
+{
+  const goodMod = run('node', [join(ROOT, 'checks', 'check-modules.mjs'), FIX('good')])
+  ok(goodMod.status === 0 && goodMod.stdout.includes('2 модулей'), 'check-modules: good → exit 0', goodMod.stderr + goodMod.stdout)
+
+  const badMod = run('node', [join(ROOT, 'checks', 'check-modules.mjs'), FIX('bad')])
+  ok(badMod.status === 1, 'check-modules: bad → exit 1', badMod.stderr)
+  ok(badMod.stderr.includes('2 точки входа') && badMod.stderr.includes('payments'), 'check-modules: bad ловит два входа')
+  ok(badMod.stderr.includes('legacy') && badMod.stderr.includes('нет точки входа'), 'check-modules: bad ловит отсутствие входа')
+
+  const noGit = run('node', [join(ROOT, 'checks', 'check-tbd.mjs'), FIX('good')])
+  ok(noGit.status === 0 && noGit.stdout.includes('пропущена'), 'check-tbd: не git-репозиторий → OK skip', noGit.stdout)
+
+  // реальный git-репозиторий: коммит в main; старая большая feature-ветка; hook на git commit
+  const grepo = mkdtempSync(join(tmpdir(), 'dev-standards-git-'))
+  try {
+    const gcommit = (msg, extraEnv = {}) =>
+      run('git', ['-C', grepo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', msg], {
+        env: { ...process.env, ...extraEnv },
+      })
+    run('git', ['init', '-q', '-b', 'main', grepo])
+    writeFileSync(join(grepo, 'base.txt'), 'base\n')
+    run('git', ['-C', grepo, 'add', '.'])
+    gcommit('base')
+
+    const onTrunk = run('node', [join(ROOT, 'checks', 'check-tbd.mjs'), grepo])
+    ok(onTrunk.status === 1 && onTrunk.stderr.includes('напрямую в `main`'), 'check-tbd: коммит в main → ✗', onTrunk.stderr)
+
+    run('git', ['-C', grepo, 'checkout', '-q', '-b', 'feat/big-old'])
+    writeFileSync(join(grepo, 'big.txt'), 'x\n'.repeat(650))
+    run('git', ['-C', grepo, 'add', '.'])
+    const oldDate = new Date(Date.now() - 5 * 86400000).toISOString()
+    gcommit('big', { GIT_AUTHOR_DATE: oldDate, GIT_COMMITTER_DATE: oldDate })
+
+    const feat = run('node', [join(ROOT, 'checks', 'check-tbd.mjs'), grepo])
+    ok(feat.status === 1 && feat.stderr.includes('> 600'), 'check-tbd: дифф > 600 строк → ✗', feat.stderr)
+    ok(feat.stderr.includes('дн. > 2'), 'check-tbd: ветка старше 2 дней → ✗', feat.stderr)
+
+    // hook ловит `git commit` в bash-команде и возвращает [tbd]-замечания
+    const tbdHook = run('node', [join(ROOT, 'hooks', 'standards-post-tool.mjs')], {
+      input: JSON.stringify({ cwd: grepo, tool_name: 'bash', tool_input: { command: 'git commit -m test' } }),
+    })
+    let parsedTbd = null
+    try {
+      parsedTbd = JSON.parse(tbdHook.stdout)
+    } catch {}
+    ok(
+      tbdHook.status === 0 &&
+        (parsedTbd?.hookSpecificOutput?.additionalContext || '').includes('[tbd]'),
+      'hook: git commit в bash → [tbd]-замечания модели',
+      tbdHook.stdout + tbdHook.stderr
+    )
+  } finally {
+    rmSync(grepo, { recursive: true, force: true })
+  }
+
+  const allBad = run('node', [join(ROOT, 'checks', 'run-all.mjs'), FIX('bad')])
+  ok(allBad.status === 1, 'run-all: bad → exit 1', allBad.stderr)
+  ok(
+    allBad.stderr.includes('[api-spec]') && allBad.stderr.includes('[component-tests]') && allBad.stderr.includes('[modules]'),
+    'run-all: сводит нарушения всех стандартов'
+  )
+  const allGood = run('node', [join(ROOT, 'checks', 'run-all.mjs'), FIX('good')])
+  ok(allGood.status === 0, 'run-all: good → exit 0', allGood.stderr + allGood.stdout)
 }
 
 // ---------- 2. Hook (Claude-формат) на эмуляции stdin ----------
@@ -168,7 +234,9 @@ const count = (s, needle) => s.split(needle).length - 1
     if (r1.status !== 0) console.log(r1.stdout, r1.stderr)
 
     ok(lstatSync(join(tmp, '.agents', 'skills', 'api-spec')).isSymbolicLink(), 'install: .agents/skills/api-spec симлинк')
+    ok(lstatSync(join(tmp, '.agents', 'skills', 'tbd')).isSymbolicLink(), 'install: .agents/skills/tbd симлинк (из манифеста)')
     ok(lstatSync(join(tmp, '.opencode', 'skills', 'component-tests')).isSymbolicLink(), 'install: .opencode/skills/component-tests симлинк')
+    ok(lstatSync(join(tmp, '.opencode', 'skills', 'modules')).isSymbolicLink(), 'install: .opencode/skills/modules симлинк (из манифеста)')
     ok(lstatSync(join(tmp, '.opencode', 'plugins', 'standards-guard.mjs')).isSymbolicLink(), 'install: плагин opencode симлинк')
 
     const ocPath = existsSync(join(tmp, 'opencode.json')) ? join(tmp, 'opencode.json') : join(tmp, 'opencode.jsonc')
@@ -198,7 +266,7 @@ const count = (s, needle) => s.split(needle).length - 1
 
     const agents = readFileSync(join(tmp, 'AGENTS.md'), 'utf8')
     ok(count(agents, 'dev-standards:start') === 1, 'install: AGENTS.md managed-блок ровно один')
-    ok(agents.includes('rationaldev-ai-sdlc-skills'), 'install: доставлен эталон AGENTS.md (rationaldev)')
+    ok(agents.includes('check-tbd') && agents.includes('один вход'), 'install: доставлен актуальный эталон AGENTS.md')
 
     const gi = readFileSync(join(tmp, '.gitignore'), 'utf8')
     ok(gi.includes('/.agents/') && gi.includes('/.opencode/') && gi.includes('/.standards/'), 'install: .gitignore root-anchored записи')
@@ -207,6 +275,10 @@ const count = (s, needle) => s.split(needle).length - 1
       existsSync(join(tmp, '.git', 'hooks', 'pre-commit')) &&
         (statSync(join(tmp, '.git', 'hooks', 'pre-commit')).mode & 0o111) !== 0,
       'install: pre-commit исполняемый'
+    )
+    ok(
+      readFileSync(join(tmp, '.git', 'hooks', 'pre-commit'), 'utf8').includes('run-all.mjs'),
+      'install: pre-commit вызывает run-all (все стандарты)'
     )
 
     // Идемпотентность: второй прогон не создаёт дублей
@@ -218,7 +290,7 @@ const count = (s, needle) => s.split(needle).length - 1
     ok(zc2.hooks.events.PostToolUse.length === 1, 'install: идемпотентность — zcode-хук один')
     const agents2 = readFileSync(join(tmp, 'AGENTS.md'), 'utf8')
     ok(count(agents2, 'dev-standards:start') === 1, 'install: идемпотентность — managed-блок один')
-    ok(agents2.includes('rationaldev-ai-sdlc-skills'), 'install: идемпотентность — эталон в блоке сохранён')
+    ok(agents2.includes('check-tbd'), 'install: идемпотентность — эталон в блоке сохранён')
     const oc2 = JSON.parse(readFileSync(ocPath, 'utf8'))
     ok(oc2.plugin.filter((p) => p.includes('standards-guard')).length === 1, 'install: идемпотентность — plugin-запись одна')
   } finally {
