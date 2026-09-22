@@ -1,0 +1,12 @@
+openapi: 3.1.0
+info:
+  title: good-service
+  version: 1.0.0
+x-frozen: 2026-09-20
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: OK
+components: {}

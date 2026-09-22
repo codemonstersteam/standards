@@ -1,0 +1,32 @@
+{
+  "$comment": "Манифест стандартов dev-standards (MVP). JSON — валидный подсет YAML: так все скрипты остаются zero-dep. enforcement: script | model | hybrid; paths — glob-маппинг «изменённый файл → какие проверки запускать».",
+  "version": "0.1.0",
+  "standards": [
+    {
+      "id": "api-spec",
+      "enforcement": "hybrid",
+      "guidance": "skills/api-spec/SKILL.md",
+      "summary": "API-спека первична и заморожена",
+      "checks": [
+        {
+          "check": "check-api-spec",
+          "paths": ["api-specification/**"],
+          "severity": "warn"
+        }
+      ]
+    },
+    {
+      "id": "component-tests",
+      "enforcement": "hybrid",
+      "guidance": "skills/component-tests/SKILL.md",
+      "summary": "Компонентные тесты — исполняемая спецификация",
+      "checks": [
+        {
+          "check": "check-component-tests",
+          "paths": ["component-tests/**", "docs/design/**"],
+          "severity": "warn"
+        }
+      ]
+    }
+  ]
+}
