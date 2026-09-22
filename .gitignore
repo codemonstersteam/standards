@@ -1,0 +1,13 @@
+# Сессионные артефакты харнесов — не коммитим
+.zcode/
+.claude/
+.agents/
+.opencode/
+.dsh/
+.pi/
+.standards/
+.dev-standards-block.tmp
+
+# Системное и мусор
+.DS_Store
+*.log
