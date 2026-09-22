@@ -47,8 +47,28 @@ git clone <этот-репозиторий> && cd dev-standards
 ## Проверка репозитория
 
 ```bash
-node test/run.mjs   # 38 проверок: чекеры, hook, плагин, install (идемпотентность, zcode-merge)
+node test/run.mjs   # 39 проверок: чекеры, hook, плагин, install (идемпотентность, zcode-merge)
 ```
+
+## Разработка этого репозитория
+
+[AGENTS.md](AGENTS.md) — эталон стандарта (доставляется в проекты как
+managed-блок; менять только там). Карта:
+
+- `standards.json` — манифест: `enforcement: script | model | hybrid`, glob-маппинг `paths` → проверки;
+- `skills/<id>/SKILL.md` — guidance (frontmatter `name`/`description`), `checks/check-<id>.mjs` — валидатор;
+- `hooks/standards-post-tool.mjs` — PostToolUse-hook (Claude-формат: dsh-мост, ZCode);
+- `opencode-plugin/standards-guard.mjs` — self-contained плагин opencode;
+- `install.sh` + `tools/merge-config.mjs` — установка; `test/` — все проверки.
+
+Правила:
+
+1. Изменение стандарта — согласованно в тройке: манифест + скилл + чекер. Правило без проверки — `model`, с проверкой — `script`/`hybrid`.
+2. Чекеры: zero-dep Node ≥18; контракт: `exit 0` + `OK — …` в stdout / `exit 1` + `✗`-строки в stderr; аргумент — projectRoot.
+3. Hook и плагин — fail-open; фильтрация по путям из манифеста, не по имени тула.
+4. `install.sh` идемпотентен (проверяется тестом); записи в user-конфиги (`~/.zcode`, `~/.dsh`) — только через merge с маркером и бэкапом.
+5. Новая функциональность = новый ассерт в `test/run.mjs`; перед коммитом прогон зелёный.
+6. Известные грабли: матчеры dsh — строчные `write|edit`; skills opencode — `.opencode/skills` (не `.agents/`); ZCode игнорирует проектные hooks; merge JSONC снимает комментарии; `Array.includes` не ищет подстроку (теги — без `@`).
 
 ## Ограничения MVP
 

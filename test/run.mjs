@@ -198,6 +198,7 @@ const count = (s, needle) => s.split(needle).length - 1
 
     const agents = readFileSync(join(tmp, 'AGENTS.md'), 'utf8')
     ok(count(agents, 'dev-standards:start') === 1, 'install: AGENTS.md managed-блок ровно один')
+    ok(agents.includes('rationaldev-ai-sdlc-skills'), 'install: доставлен эталон AGENTS.md (rationaldev)')
 
     const gi = readFileSync(join(tmp, '.gitignore'), 'utf8')
     ok(gi.includes('/.agents/') && gi.includes('/.opencode/') && gi.includes('/.standards/'), 'install: .gitignore root-anchored записи')
@@ -217,6 +218,7 @@ const count = (s, needle) => s.split(needle).length - 1
     ok(zc2.hooks.events.PostToolUse.length === 1, 'install: идемпотентность — zcode-хук один')
     const agents2 = readFileSync(join(tmp, 'AGENTS.md'), 'utf8')
     ok(count(agents2, 'dev-standards:start') === 1, 'install: идемпотентность — managed-блок один')
+    ok(agents2.includes('rationaldev-ai-sdlc-skills'), 'install: идемпотентность — эталон в блоке сохранён')
     const oc2 = JSON.parse(readFileSync(ocPath, 'utf8'))
     ok(oc2.plugin.filter((p) => p.includes('standards-guard')).length === 1, 'install: идемпотентность — plugin-запись одна')
   } finally {

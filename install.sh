@@ -40,33 +40,29 @@ if has_target opencode; then
   for s in api-spec component-tests; do ln -sfn "$SH/skills/$s" "$PROJ/.opencode/skills/$s"; done
 fi
 
-# ---------- AGENTS.md: managed-блок (заменяется целиком при повторной установке) ----------
+# ---------- AGENTS.md: managed-блок = эталон AGENTS.md этого репозитория ----------
+# Содержимое берётся из $SH/AGENTS.md (единственный источник истины) и
+# оборачивается маркерами; при повторной установке блок заменяется целиком.
 AGENTS="$PROJ/AGENTS.md"
 START="<!-- dev-standards:start -->"
 END="<!-- dev-standards:end -->"
-BLOCK="$(cat <<'MDEOF'
-<!-- dev-standards:start -->
-## Стандарты разработки (управляется dev-standards — не редактировать вручную)
-
-Hard rules (проверяются скриптами автоматически):
-
-1. API-спека первична и заморожена: изменения поведения — сначала в
-   `api-specification/openapi.yaml` (маркер `x-frozen:`), затем код.
-   Структура: `openapi:` 3.x, `paths:` с путями, `responses:`.
-2. Компонентные тесты: `component-tests/features/*.feature`; все бизнес-сценарии
-   `@wip`, минимум один `@smoke`, число бизнес-сценариев = формуле из дизайна
-   (N = 1 + Σ) в `docs/design/**/contracts.md`.
-
-Замечания валидатора (`✗ …`), возвращаемые после правок, обязательны к
-исправлению в том же ходу. Подробности: skills `api-spec`, `component-tests`.
-<!-- dev-standards:end -->
-MDEOF
-)"
+BLOCK="$START
+$(cat "$SH/AGENTS.md")
+$END"
+BLOCKFILE="$PROJ/.dev-standards-block.tmp"
+printf '%s\n' "$BLOCK" > "$BLOCKFILE"
 if [ -f "$AGENTS" ] && grep -q 'dev-standards:start' "$AGENTS"; then
-  awk -v s="$START" -v e="$END" -v b="$BLOCK" 'BEGIN{p=1} $0==s{print b; p=0} $0==e{p=1; next} p' "$AGENTS" > "$AGENTS.tmp" && mv "$AGENTS.tmp" "$AGENTS"
+  # BSD awk (macOS) не принимает многострочный -v, поэтому блок читается из файла
+  awk -v s="$START" -v e="$END" -v bf="$BLOCKFILE" '
+    BEGIN { p = 1 }
+    $0 == s { while ((getline l < bf) > 0) print l; close(bf); p = 0; next }
+    $0 == e { p = 1; next }
+    p
+  ' "$AGENTS" > "$AGENTS.tmp" && mv "$AGENTS.tmp" "$AGENTS"
 else
   printf '\n%s\n' "$BLOCK" >> "$AGENTS"
 fi
+rm -f "$BLOCKFILE"
 
 # ---------- .gitignore: root-anchored записи (фикс виснущего снапшота opencode на симлинках) ----------
 GI="$PROJ/.gitignore"
