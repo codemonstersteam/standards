@@ -106,13 +106,68 @@ const count = (s, needle) => s.split(needle).length - 1
   }
 
   const allBad = run('node', [join(ROOT, 'checks', 'run-all.mjs'), FIX('bad')])
-  ok(allBad.status === 1, 'run-all: bad → exit 1', allBad.stderr)
+  ok(allBad.status === 1, 'run-all: bad strict → exit 1 (по [error]-дублям)', allBad.stderr)
   ok(
-    allBad.stderr.includes('[api-spec]') && allBad.stderr.includes('[component-tests]') && allBad.stderr.includes('[modules]'),
+    allBad.stderr.includes('[box-spec]') && allBad.stderr.includes('[component-tests]') && allBad.stderr.includes('[modules]'),
     'run-all: сводит нарушения всех стандартов'
   )
   const allGood = run('node', [join(ROOT, 'checks', 'run-all.mjs'), FIX('good')])
-  ok(allGood.status === 0, 'run-all: good → exit 0', allGood.stderr + allGood.stdout)
+  ok(allGood.status === 0, 'run-all: good strict → exit 0', allGood.stderr + allGood.stdout)
+  const allBadReport = run('node', [join(ROOT, 'checks', 'run-all.mjs'), FIX('bad'), '--report'])
+  ok(allBadReport.status === 0, 'run-all: bad --report → всегда exit 0', allBadReport.stderr)
+}
+
+// ---------- 1b'. Прогрессивные проверки: docs, constructors ----------
+{
+  const goodDocs = run('node', [join(ROOT, 'checks', 'check-docs.mjs'), FIX('good')])
+  ok(goodDocs.status === 0 && goodDocs.stdout.includes('pipe-описание'), 'check-docs: good → exit 0', goodDocs.stderr)
+
+  const badDocs = run('node', [join(ROOT, 'checks', 'check-docs.mjs'), FIX('bad')])
+  ok(badDocs.status === 1 && badDocs.stderr.includes('README.md не найден'), 'check-docs: bad (нет README) → exit 1', badDocs.stderr)
+
+  const noContract = run('node', [join(ROOT, 'checks', 'check-docs.mjs'), FIX('go-good')])
+  ok(noContract.status === 0 && noContract.stdout.includes('пропущена'), 'check-docs: без контракта → skip')
+
+  const goGood = run('node', [join(ROOT, 'checks', 'check-constructors.mjs'), '.', '--files', FIX('go-good', 'items.go')])
+  ok(goGood.status === 0, 'check-constructors: good-фабрика → exit 0', goGood.stderr + goGood.stdout)
+
+  const goBad = run('node', [join(ROOT, 'checks', 'check-constructors.mjs'), '.', '--files', FIX('go-bad', 'payments.go')])
+  ok(goBad.status === 1, 'check-constructors: bad → exit 1', goBad.stderr)
+  ok(goBad.stderr.includes('не проверяет вход'), 'check-constructors: ловит фабрику без проверки')
+  ok(goBad.stderr.includes('«голый» литерал'), 'check-constructors: ловит литерал вне фабрики')
+
+  const nogo = run('node', [join(ROOT, 'checks', 'check-constructors.mjs'), FIX('good')])
+  ok(nogo.status === 0 && nogo.stdout.includes('пропущена'), 'check-constructors: нет Go-файлов → skip')
+}
+
+// ---------- 1c. pi-расширение (extension-API: tool_result) ----------
+{
+  const mod = await import(pathToFileURL(join(ROOT, 'pi-extension', 'index.mjs')))
+  ok(typeof mod.default === 'function', 'pi-extension: экспортирует register(pi)')
+  const handlers = {}
+  mod.default({ on: (ev, fn) => { handlers[ev] = fn } })
+  ok(typeof handlers['tool_result'] === 'function', 'pi-extension: подписан на tool_result')
+
+  const prevCwd = process.cwd()
+  process.chdir(FIX('bad'))
+  try {
+    const patch = await handlers['tool_result']({
+      toolName: 'edit',
+      input: { path: 'api-specification/openapi.yaml' },
+      content: [{ type: 'text', text: 'файл записан' }],
+    })
+    const text = JSON.stringify(patch?.content ?? [])
+    ok(text.includes('✗') && text.includes('[box-spec]'), 'pi-extension: tool_result дополняет результат ✗-списком', text.slice(0, 200))
+
+    const clean = await handlers['tool_result']({ toolName: 'edit', input: { path: 'src/main.go' }, content: [] })
+    ok(clean === undefined, 'pi-extension: посторонний путь — без патча')
+
+    // git commit вне git-репозитория → check-tbd мягко пропускается
+    const bash = await handlers['tool_result']({ toolName: 'bash', input: { command: 'git commit -m x' }, content: [] })
+    ok(bash === undefined, 'pi-extension: git commit вне репо — без патча')
+  } finally {
+    process.chdir(prevCwd)
+  }
 }
 
 // ---------- 2. Hook (Claude-формат) на эмуляции stdin ----------
@@ -228,12 +283,13 @@ const count = (s, needle) => s.split(needle).length - 1
     mkdirSync(join(tmp, '.git', 'hooks'), { recursive: true })
 
     const env = { ...process.env, HOME: home }
-    const args = [join(ROOT, 'install.sh'), tmp, '--zcode', '--pre-commit']
+    const args = [join(ROOT, 'install.sh'), tmp, '--targets=dsh,opencode,zcode,pi,claude', '--pre-commit']
     const r1 = run('bash', args, { env })
     ok(r1.status === 0, 'install: первый прогон exit 0', r1.stderr)
     if (r1.status !== 0) console.log(r1.stdout, r1.stderr)
 
-    ok(lstatSync(join(tmp, '.agents', 'skills', 'api-spec')).isSymbolicLink(), 'install: .agents/skills/api-spec симлинк')
+    ok(lstatSync(join(tmp, '.agents', 'skills', 'box-spec')).isSymbolicLink(), 'install: .agents/skills/box-spec симлинк')
+    ok(lstatSync(join(tmp, '.agents', 'skills', 'release')).isSymbolicLink(), 'install: .agents/skills/release симлинк (из манифеста)')
     ok(lstatSync(join(tmp, '.agents', 'skills', 'tbd')).isSymbolicLink(), 'install: .agents/skills/tbd симлинк (из манифеста)')
     ok(lstatSync(join(tmp, '.opencode', 'skills', 'component-tests')).isSymbolicLink(), 'install: .opencode/skills/component-tests симлинк')
     ok(lstatSync(join(tmp, '.opencode', 'skills', 'modules')).isSymbolicLink(), 'install: .opencode/skills/modules симлинк (из манифеста)')
@@ -264,9 +320,25 @@ const count = (s, needle) => s.split(needle).length - 1
       'install: zcode config.json содержит PostToolUse-хук'
     )
 
+    const piCfg = JSON.parse(readFileSync(join(home, '.pi', 'agent', 'settings.json'), 'utf8'))
+    ok(
+      Array.isArray(piCfg.packages) && piCfg.packages.includes(ROOT),
+      'install: pi settings.json содержит extension-пакет'
+    )
+
+    ok(lstatSync(join(tmp, '.claude', 'skills', 'modules')).isSymbolicLink(), 'install: .claude/skills/modules симлинк')
+    const cl = JSON.parse(readFileSync(join(tmp, '.claude', 'settings.json'), 'utf8'))
+    ok(
+      cl.hooks?.PostToolUse?.length === 1 &&
+        cl.hooks.PostToolUse[0].matcher === 'Write|Edit' &&
+        cl.hooks.PostToolUse[0].hooks[0].command.includes('standards-post-tool.mjs'),
+      'install: claude settings.json содержит PostToolUse-хук'
+    )
+    ok(readFileSync(join(tmp, 'CLAUDE.md'), 'utf8').includes('@AGENTS.md'), 'install: CLAUDE.md shim = @AGENTS.md')
+
     const agents = readFileSync(join(tmp, 'AGENTS.md'), 'utf8')
     ok(count(agents, 'dev-standards:start') === 1, 'install: AGENTS.md managed-блок ровно один')
-    ok(agents.includes('check-tbd') && agents.includes('один вход'), 'install: доставлен актуальный эталон AGENTS.md')
+    ok(agents.includes('check-tbd') && agents.includes('Box-first'), 'install: доставлен актуальный эталон AGENTS.md')
 
     const gi = readFileSync(join(tmp, '.gitignore'), 'utf8')
     ok(gi.includes('/.agents/') && gi.includes('/.opencode/') && gi.includes('/.standards/'), 'install: .gitignore root-anchored записи')
@@ -277,8 +349,9 @@ const count = (s, needle) => s.split(needle).length - 1
       'install: pre-commit исполняемый'
     )
     ok(
-      readFileSync(join(tmp, '.git', 'hooks', 'pre-commit'), 'utf8').includes('run-all.mjs'),
-      'install: pre-commit вызывает run-all (все стандарты)'
+      readFileSync(join(tmp, '.git', 'hooks', 'pre-commit'), 'utf8').includes('run-all.mjs') &&
+        readFileSync(join(tmp, '.git', 'hooks', 'pre-commit'), 'utf8').includes('--report'),
+      'install: pre-commit вызывает run-all в report-режиме'
     )
 
     // Идемпотентность: второй прогон не создаёт дублей
@@ -288,6 +361,10 @@ const count = (s, needle) => s.split(needle).length - 1
     ok(count(cordis2, 'dev-standards-hooks') === 1, 'install: идемпотентность — мост dsh один')
     const zc2 = JSON.parse(readFileSync(join(home, '.zcode', 'cli', 'config.json'), 'utf8'))
     ok(zc2.hooks.events.PostToolUse.length === 1, 'install: идемпотентность — zcode-хук один')
+    const piCfg2 = JSON.parse(readFileSync(join(home, '.pi', 'agent', 'settings.json'), 'utf8'))
+    ok(piCfg2.packages.filter((p) => p === ROOT).length === 1, 'install: идемпотентность — pi-пакет один')
+    const cl2 = JSON.parse(readFileSync(join(tmp, '.claude', 'settings.json'), 'utf8'))
+    ok(cl2.hooks.PostToolUse.length === 1, 'install: идемпотентность — claude-хук один')
     const agents2 = readFileSync(join(tmp, 'AGENTS.md'), 'utf8')
     ok(count(agents2, 'dev-standards:start') === 1, 'install: идемпотентность — managed-блок один')
     ok(agents2.includes('check-tbd'), 'install: идемпотентность — эталон в блоке сохранён')

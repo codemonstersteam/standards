@@ -58,7 +58,7 @@ async function main() {
   const additionalContext =
     `[dev-standards] Нарушения стандартов:\n` +
     violations.map((v) => `  ${v}`).join('\n') +
-    `\nИсправь нарушения в этом же ходу. Подробности правил: skills api-spec, component-tests, modules, tbd.`
+    `\nИсправь нарушения в этом же ходу. Подробности правил: skills box-spec, component-tests, modules, tbd, release.`
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {

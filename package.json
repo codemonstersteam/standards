@@ -1,0 +1,10 @@
+{
+  "name": "dev-standards",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Стандарты разработки с детерминированными проверками для LLM-харнесов (dsh, opencode, pi, ZCode)",
+  "pi": {
+    "extensions": ["./pi-extension/index.mjs"],
+    "skills": ["./skills"]
+  }
+}

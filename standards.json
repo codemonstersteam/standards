@@ -1,16 +1,21 @@
 {
-  "$comment": "Манифест стандартов dev-standards. JSON — валидный подсет YAML: так все скрипты остаются zero-dep. enforcement: script | model | hybrid; paths — glob-маппинг «изменённый файл → какие проверки запускать»; проверки без paths (tbd) запускаются из run-all/pre-commit и хуком по git commit.",
-  "version": "0.2.0",
+  "$comment": "Манифест стандартов dev-standards. JSON — валидный подсет YAML: так все скрипты остаются zero-dep. enforcement: script | model | hybrid; paths — glob-маппинг «изменённый файл → какие проверки запускать»; severity: error роняет strict-режим, warn — только замечание. Проверки без paths (tbd) запускаются из run-all/pre-commit и хуком по git commit. langs — ограничение языка для языковых проверок.",
+  "version": "0.3.0",
   "standards": [
     {
-      "id": "api-spec",
+      "id": "box-spec",
       "enforcement": "hybrid",
-      "guidance": "skills/api-spec/SKILL.md",
-      "summary": "API First: контракт первичен и заморожен",
+      "guidance": "skills/box-spec/SKILL.md",
+      "summary": "Коробка начинается со спецификации + Doc as Code",
       "checks": [
         {
           "check": "check-api-spec",
           "paths": ["api-specification/**"],
+          "severity": "warn"
+        },
+        {
+          "check": "check-docs",
+          "paths": ["api-specification/**", "README.md"],
           "severity": "warn"
         }
       ]
@@ -32,12 +37,19 @@
       "id": "modules",
       "enforcement": "hybrid",
       "guidance": "skills/modules/SKILL.md",
-      "summary": "Модуль = один вход, один выход",
+      "summary": "Модули: 1 вход/1 выход, valid-by-construction, ROP, чистое ядро vs I/O",
       "checks": [
         {
           "check": "check-modules",
           "paths": ["internal/**"],
           "severity": "warn"
+        },
+        {
+          "check": "check-constructors",
+          "paths": ["**/*.go"],
+          "severity": "warn",
+          "langs": ["go"],
+          "trigger": "changed"
         }
       ]
     },
@@ -54,6 +66,13 @@
           "severity": "warn"
         }
       ]
+    },
+    {
+      "id": "release",
+      "enforcement": "model",
+      "guidance": "skills/release/SKILL.md",
+      "summary": "SemVer по совместимости + feature toggles default OFF",
+      "checks": []
     }
   ]
 }

@@ -33,17 +33,17 @@ if (!existsSync(ctDir)) {
       } else {
         business.push(s)
         if (!s.tags.includes('wip')) {
-          errors.push(`сценарий «${s.name}» (${where}) без @wip — все бизнес-сценарии держатся @wip до фиксации`)
+          errors.push(`[warn] сценарий «${s.name}» (${where}) без @wip — все бизнес-сценарии держатся @wip до фиксации`)
         }
       }
       titles.set(s.name, (titles.get(s.name) || 0) + 1)
     }
   }
   for (const [name, n] of titles) {
-    if (n > 1) errors.push(`название сценария «${name}» встречается ${n} раза — дубли запрещены`)
+    if (n > 1) errors.push(`[error] название сценария «${name}» встречается ${n} раза — дубли запрещены`)
   }
   if (smoke === 0 && files.length > 0) {
-    errors.push('нет @smoke-сценария — дымовой сценарий обязателен')
+    errors.push('[warn] нет @smoke-сценария — дымовой сценарий обязателен')
   }
 }
 

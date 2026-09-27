@@ -13,10 +13,12 @@ SKILLS="$(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1]
 
 PROJ=""
 PRE_COMMIT=0
+PRE_COMMIT_STRICT=0
 TARGETS="dsh,opencode"
 for arg in "$@"; do
   case "$arg" in
     --pre-commit) PRE_COMMIT=1 ;;
+    --pre-commit-strict) PRE_COMMIT=1; PRE_COMMIT_STRICT=1 ;;
     --zcode) TARGETS="${TARGETS},zcode" ;;
     --targets=*) TARGETS="${arg#--targets=}" ;;
     *) PROJ="$arg" ;;
@@ -29,7 +31,9 @@ EXTRA=""
 has_target dsh && EXTRA="${EXTRA:+$EXTRA + }dsh"
 has_target opencode && EXTRA="${EXTRA:+$EXTRA + }opencode"
 has_target zcode && EXTRA="${EXTRA:+$EXTRA + }zcode"
+has_target claude && EXTRA="${EXTRA:+$EXTRA + }claude"
 [ "$PRE_COMMIT" = 1 ] && EXTRA="${EXTRA:+$EXTRA + }pre-commit"
+if [ "$PRE_COMMIT_STRICT" = 1 ]; then EXTRA="$EXTRA:strict"; fi
 
 # ---------- skills ----------
 # dsh: .agents/skills (ранг 200); opencode: .opencode/skills; zcode: ~/.zcode/skills (user-уровень)
@@ -40,6 +44,10 @@ fi
 if has_target opencode; then
   mkdir -p "$PROJ/.opencode/skills"
   for s in $SKILLS; do ln -sfn "$SH/skills/$s" "$PROJ/.opencode/skills/$s"; done
+fi
+if has_target claude; then
+  mkdir -p "$PROJ/.claude/skills"
+  for s in $SKILLS; do ln -sfn "$SH/skills/$s" "$PROJ/.claude/skills/$s"; done
 fi
 
 # ---------- AGENTS.md: managed-блок = эталон AGENTS.md этого репозитория ----------
@@ -132,14 +140,41 @@ if has_target zcode; then
   node "$SH/tools/merge-config.mjs" zcode "$HOME/.zcode/cli/config.json" "node '$HOOK'"
 fi
 
-# ---------- pre-commit (опция): все проверки манифеста до коммита ----------
+# ---------- pi: extension-пакет в ~/.pi/agent/settings.json (packages) ----------
+# У pi нет hooks/MCP — контроль идёт через pi-extension (tool_result), скиллы
+# поставляются пакетом ("pi": {"extensions", "skills"} в package.json).
+if has_target pi; then
+  mkdir -p "$HOME/.pi/agent"
+  node "$SH/tools/merge-config.mjs" pi "$HOME/.pi/agent/settings.json" "$SH"
+  if command -v pi >/dev/null 2>&1; then
+    pi update --extensions >/dev/null 2>&1 || true # подтянуть пакет, если pi доступен
+  fi
+fi
+
+# ---------- claude: скиллы в .claude/skills + hooks в project .claude/settings.json ----------
+# Claude Code читает AGENTS.md нативно (>=2.1.277); для старых версий ставим shim
+# CLAUDE.md = "@AGENTS.md", если CLAUDE.md ещё нет. Проектный settings коммитится
+# и исполняется (в отличие от ZCode), поэтому хук живёт в проекте.
+if has_target claude; then
+  node "$SH/tools/merge-config.mjs" claude "$PROJ/.claude/settings.json" "node '$HOOK'"
+  if [ ! -f "$PROJ/CLAUDE.md" ]; then
+    printf '@AGENTS.md\n' > "$PROJ/CLAUDE.md"
+  fi
+  # settings.local.json — личные настройки, не коммитим
+  grep -qxF '/.claude/settings.local.json' "$GI" 2>/dev/null || printf '%s\n' '/.claude/settings.local.json' >> "$GI"
+fi
+
+# ---------- pre-commit (опция): отчёт/strict всех проверок манифеста до коммита ----------
+# По умолчанию --report (всегда exit 0, печатает ✗-сводку) — прогрессивный режим
+# для существующих проектов; --pre-commit-strict ставит строгий вариант (exit 1 на error).
 if [ "$PRE_COMMIT" = 1 ]; then
   mkdir -p "$PROJ/.git/hooks"
+  RUN_MODE="report"
+  [ "$PRE_COMMIT_STRICT" = 1 ] && RUN_MODE="strict"
   cat > "$PROJ/.git/hooks/pre-commit" <<EOF
 #!/usr/bin/env bash
-# dev-standards: детерминированные проверки до коммита (все стандарты манифеста)
-set -e
-node "$SH/checks/run-all.mjs" "$PROJ"
+# dev-standards: детерминированные проверки до коммита (режим: $RUN_MODE)
+node "$SH/checks/run-all.mjs" "$PROJ" --$RUN_MODE
 EOF
   chmod +x "$PROJ/.git/hooks/pre-commit"
 fi
