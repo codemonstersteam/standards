@@ -74,6 +74,15 @@ const count = (s, needle) => s.split(needle).length - 1
     run('git', ['-C', grepo, 'add', '.'])
     gcommit('base')
 
+    // greenfield: ровно один коммит — bootstrap-коммит на trunk легален
+    const gf = run('node', [join(ROOT, 'checks', 'check-tbd.mjs'), grepo])
+    ok(gf.status === 0, 'check-tbd: greenfield (1 коммит) → OK', gf.stderr)
+
+    // второй коммит — репозиторий больше не greenfield, правило trunk-коммита активно
+    writeFileSync(join(grepo, 'second.txt'), 'second\n')
+    run('git', ['-C', grepo, 'add', '.'])
+    gcommit('second')
+
     const onTrunk = run('node', [join(ROOT, 'checks', 'check-tbd.mjs'), grepo])
     ok(onTrunk.status === 1 && onTrunk.stderr.includes('напрямую в `main`'), 'check-tbd: коммит в main → ✗', onTrunk.stderr)
 

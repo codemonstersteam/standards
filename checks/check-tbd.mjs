@@ -18,6 +18,9 @@ if (!(isRepo.status === 0 && String(isRepo.stdout).trim() === 'true')) {
 
 const TRUNKS = ['trunk', 'main', 'master']
 const branch = String(git(['rev-parse', '--abbrev-ref', 'HEAD']).stdout || '').trim()
+// greenfield-пропуск: в проекте ровно один коммит — bootstrap на trunk легален
+const count = git(['rev-list', '--count', 'HEAD'])
+const isGreenfield = count.status === 0 && String(count.stdout).trim() === '1'
 let trunk = null
 for (const t of TRUNKS) {
   if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${t}`]).status === 0) {
@@ -26,7 +29,7 @@ for (const t of TRUNKS) {
   }
 }
 
-if (trunk && TRUNKS.includes(branch)) {
+if (trunk && TRUNKS.includes(branch) && !isGreenfield) {
   errors.push(`коммит напрямую в \`${branch}\` запрещён — работай в feature-ветке, вливай через PR`)
 }
 
