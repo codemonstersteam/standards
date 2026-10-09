@@ -11,6 +11,16 @@ import { readFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { walkFiles } from '../lib/common.mjs'
 
+// Что проверяет чекер — источник для генератора скиллов (tools/generate.mjs).
+export const meta = {
+  what:
+    '`check-constructors` (Go) — в изменённых `*.go`: доменные типы с фабрикой\nбез ветки ошибки, голые литералы доменных типов вне фабрики (warn).',
+}
+if (process.argv.includes('--meta')) {
+  console.log(JSON.stringify(meta))
+  process.exit(0)
+}
+
 const argv = process.argv.slice(2)
 const root = resolve(argv.find((a) => !a.startsWith('--')) || process.cwd())
 const filesIdx = argv.indexOf('--files')

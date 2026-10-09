@@ -27,6 +27,225 @@ function run(cmd, args, opts = {}) {
 }
 const count = (s, needle) => s.split(needle).length - 1
 
+// ---------- 0. Мини-YAML-парсер (lib/yaml.mjs) ----------
+{
+  const { parseYaml } = await import(pathToFileURL(join(ROOT, 'lib', 'yaml.mjs')))
+
+  const basic = parseYaml(
+    [
+      'version: 0.4.0          # комментарий',
+      'count: 42',
+      'flag: true',
+      'nothing: null',
+      'name: box-spec',
+      '"quoted:key": v',
+      'order: [b, "c d", 7]',
+      'empty: []',
+    ].join('\n')
+  )
+  ok(
+    basic.version === '0.4.0' && basic.count === 42 && basic.flag === true && basic.nothing === null,
+    'yaml: скаляры (строка/число/bool/null), комментарий снят'
+  )
+  ok(basic['quoted:key'] === 'v', 'yaml: ключ в кавычках с двоеточием')
+  ok(
+    Array.isArray(basic.order) && basic.order[1] === 'c d' && basic.order[2] === 7 && basic.empty.length === 0,
+    'yaml: inline-списки (в т.ч. пустой)'
+  )
+
+  const nested = parseYaml(
+    [
+      'rule_groups:',
+      '  hard:',
+      '    heading: "## Hard rules"',
+      '    items:',
+      '      - один',
+      '      - |',
+      '        две',
+      '        строки',
+      'checks:',
+      '  - check: check-api-spec',
+      '    paths: ["a/**"]',
+      '    severity: warn',
+      '  - check: check-docs',
+      '    severity: warn',
+    ].join('\n')
+  )
+  ok(
+    nested.rule_groups.hard.heading === '## Hard rules' && nested.rule_groups.hard.items[0] === 'один',
+    'yaml: вложенные map + список строк'
+  )
+  ok(nested.rule_groups.hard.items[1] === 'две\nстроки\n', 'yaml: block scalar | (с конечным \\n)')
+  ok(
+    nested.checks[0].paths[0] === 'a/**' && nested.checks[1].severity === 'warn' && nested.checks[1].paths === undefined,
+    'yaml: список map-элементов с продолжением на следующих строках'
+  )
+
+  const folded = parseYaml('desc: >-\n  одна\n  строка\n\n  новый абзац\n')
+  ok(folded.desc === 'одна строка\nновый абзац', 'yaml: >- сворачивает переносы, пустая строка = абзац')
+
+  ok(parseYaml('---\n# комментарий\na: 1\n...\n').a === 1, 'yaml: --- и строка-комментарий пропускаются')
+
+  let threw = 0
+  try {
+    parseYaml('a:\n\tb: 1')
+  } catch {
+    threw++
+  }
+  try {
+    parseYaml('просто строка')
+  } catch {
+    threw++
+  }
+  try {
+    parseYaml('a: 1\n  b: 2')
+  } catch {
+    threw++
+  }
+  ok(threw === 3, 'yaml: fail-closed (таб в отступе / не-ключ / лишний отступ)')
+}
+
+// ---------- 0b. Генератор артефактов из rules/ (tools/generate.mjs) ----------
+{
+  const gen = run('node', [join(ROOT, 'tools', 'generate.mjs')])
+  ok(gen.status === 0, 'generate: прогон exit 0', gen.stderr)
+
+  const check = run('node', [join(ROOT, 'tools', 'generate.mjs'), '--check'])
+  ok(check.status === 0 && check.stdout.includes('OK'), 'generate --check: артефакты свежи', check.stdout + check.stderr)
+
+  const box = readFileSync(join(ROOT, 'skills', 'box-spec', 'SKILL.md'), 'utf8')
+  ok(
+    box.startsWith('---\nname: box-spec\n') && box.includes('## Hard rules') && box.includes('## STOP') && box.includes('x-frozen'),
+    'generate: SKILL.md собран (frontmatter, правила, STOP, контент правил)'
+  )
+  ok(box.includes('generated from rules/box-spec sha256:'), 'generate: штамп provenance в SKILL.md')
+
+  const tbd = readFileSync(join(ROOT, 'skills', 'tbd', 'SKILL.md'), 'utf8')
+  ok(
+    tbd.includes('## Что проверяет скрипт (check-tbd)') && tbd.includes('- коммит напрямую в trunk/main/master — запрещено;'),
+    'generate: секция «что проверяет» выводится из meta чекера'
+  )
+
+  const release = readFileSync(join(ROOT, 'skills', 'release', 'SKILL.md'), 'utf8')
+  ok(
+    release.includes('## SemVer: вес = совместимость') && release.includes('## Feature toggles') && release.includes('Ничего (guidance)'),
+    'generate: группы правил release + guidance-текст при пустых checks'
+  )
+
+  const manifest = JSON.parse(readFileSync(join(ROOT, 'standards.json'), 'utf8'))
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
+  ok(
+    manifest.standards.length === 5 &&
+      manifest.standards.map((s) => s.id).join(',') === 'box-spec,component-tests,modules,tbd,release',
+    'generate: манифест — 5 стандартов в порядке order из meta.yaml'
+  )
+  ok(
+    manifest.version === pkg.version,
+    'generate: версии манифеста и package.json из одного источника (rules/meta.yaml)'
+  )
+  ok(box.includes('dev-standards@v'), 'generate: штамп содержит версию dev-standards@')
+
+  const agents = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8')
+  ok(
+    agents.includes('dev-standards:skills:start v1') && agents.includes('dev-standards:skills:end v1') && agents.includes('`release`'),
+    'generate: footer AGENTS.md — managed-блок v1 со списком скиллов'
+  )
+
+  // --list: сухой прогон, ничего не пишет
+  const ls = run('node', [join(ROOT, 'tools', 'generate.mjs'), '--list'])
+  ok(
+    ls.status === 0 && ls.stdout.includes('skills/tbd/SKILL.md (fresh)') && ls.stdout.includes('standards.json (fresh)'),
+    'generate --list: план артефактов, fresh-статусы',
+    ls.stdout
+  )
+
+  // миграция: старые маркеры без версии нормализуются на v1
+  const agentsPath = join(ROOT, 'AGENTS.md')
+  const agentsOriginal = readFileSync(agentsPath, 'utf8')
+  try {
+    writeFileSync(
+      agentsPath,
+      agentsOriginal
+        .replaceAll('dev-standards:skills:start v1', 'dev-standards:skills:start')
+        .replaceAll('dev-standards:skills:end v1', 'dev-standards:skills:end')
+    )
+    run('node', [join(ROOT, 'tools', 'generate.mjs')])
+    ok(
+      readFileSync(agentsPath, 'utf8').includes('dev-standards:skills:start v1'),
+      'generate: мигрирует старые маркеры (без версии) на v1'
+    )
+  } finally {
+    writeFileSync(agentsPath, agentsOriginal)
+  }
+
+  // --clean: удаляет артефакты-владельцы и вырезает блок; generate восстанавливает
+  const clean = run('node', [join(ROOT, 'tools', 'generate.mjs'), '--clean'])
+  ok(
+    clean.status === 0 &&
+      !existsSync(join(ROOT, 'standards.json')) &&
+      !existsSync(join(ROOT, 'skills', 'tbd', 'SKILL.md')),
+    'generate --clean: удаляет standards.json и SKILL.md',
+    clean.stdout + clean.stderr
+  )
+  ok(
+    !readFileSync(agentsPath, 'utf8').includes('dev-standards:skills:'),
+    'generate --clean: вырезает skills-блок из AGENTS.md'
+  )
+  run('node', [join(ROOT, 'tools', 'generate.mjs')])
+  ok(
+    run('node', [join(ROOT, 'tools', 'generate.mjs'), '--check']).status === 0,
+    'generate: после clean + generate всё восстановлено'
+  )
+
+  // ручная правка сгенерённого артефакта ловится --check и видна в --list
+  const skillPath = join(ROOT, 'skills', 'tbd', 'SKILL.md')
+  const original = readFileSync(skillPath, 'utf8')
+  try {
+    writeFileSync(skillPath, original + 'ручная правка\n')
+    const stale = run('node', [join(ROOT, 'tools', 'generate.mjs'), '--check'])
+    ok(
+      stale.status === 1 && stale.stderr.includes('skills/tbd/SKILL.md'),
+      'generate --check: ловит ручную правку артефакта',
+      stale.stderr
+    )
+    const lsStale = run('node', [join(ROOT, 'tools', 'generate.mjs'), '--list'])
+    ok(
+      lsStale.status === 0 && lsStale.stdout.includes('skills/tbd/SKILL.md (would update)'),
+      'generate --list: устаревший артефакт помечен would update',
+      lsStale.stdout
+    )
+  } finally {
+    writeFileSync(skillPath, original)
+  }
+  ok(run('node', [join(ROOT, 'tools', 'generate.mjs'), '--check']).status === 0, 'generate --check: после восстановления — свежи')
+
+  // правка rules/ меняет артефакт: источник один
+  const rulePath = join(ROOT, 'rules', 'tbd', 'rule.yaml')
+  const ruleOriginal = readFileSync(rulePath, 'utf8')
+  try {
+    writeFileSync(rulePath, ruleOriginal.replace('summary: Trunk-Based Development', 'summary: Trunk-Based Development (тест)'))
+    run('node', [join(ROOT, 'tools', 'generate.mjs')])
+    ok(
+      readFileSync(join(ROOT, 'standards.json'), 'utf8').includes('Trunk-Based Development (тест)'),
+      'generate: правка rules/ меняет манифест (правки только в источнике)'
+    )
+  } finally {
+    writeFileSync(rulePath, ruleOriginal)
+    run('node', [join(ROOT, 'tools', 'generate.mjs')])
+  }
+
+  // чекеры отдают своё описание (--meta)
+  const m = run('node', [join(ROOT, 'checks', 'check-tbd.mjs'), '--meta'])
+  let parsedMeta = null
+  try {
+    parsedMeta = JSON.parse(m.stdout)
+  } catch {}
+  ok(
+    m.status === 0 && Array.isArray(parsedMeta?.what) && parsedMeta.what.length === 3 && typeof parsedMeta.notes === 'string',
+    'check --meta: JSON с what[] и notes'
+  )
+}
+
 // ---------- 1. Чекеры на фикстурах ----------
 {
   const goodApi = run('node', [join(ROOT, 'checks', 'check-api-spec.mjs'), FIX('good')])
@@ -167,6 +386,7 @@ const count = (s, needle) => s.split(needle).length - 1
     })
     const text = JSON.stringify(patch?.content ?? [])
     ok(text.includes('✗') && text.includes('[box-spec]'), 'pi-extension: tool_result дополняет результат ✗-списком', text.slice(0, 200))
+    ok(text.includes('skills box-spec, component-tests'), 'pi-extension: список скиллов — динамически из манифеста', text.slice(0, 300))
 
     const clean = await handlers['tool_result']({ toolName: 'edit', input: { path: 'src/main.go' }, content: [] })
     ok(clean === undefined, 'pi-extension: посторонний путь — без патча')
@@ -205,6 +425,11 @@ const count = (s, needle) => s.split(needle).length - 1
     'hook: additionalContext содержит ✗',
     r.stdout
   )
+  ok(
+    (parsed?.hookSpecificOutput?.additionalContext || '').includes('skills box-spec, component-tests, modules, tbd, release'),
+    'hook: список скиллов в подсказке — динамически из манифеста',
+    r.stdout
+  )
 
   const unrelated = run('node', [join(ROOT, 'hooks', 'standards-post-tool.mjs')], {
     input: JSON.stringify({ cwd: FIX('bad'), tool_name: 'edit', tool_input: { file_path: 'src/main.go' } }),
@@ -215,6 +440,38 @@ const count = (s, needle) => s.split(needle).length - 1
     input: JSON.stringify({ cwd: FIX('good'), tool_name: 'edit', tool_input: { file_path: 'api-specification/openapi.yaml' } }),
   })
   ok(goodEdit.status === 0 && goodEdit.stdout.trim() === '', 'hook: good-фикстура → тишина', goodEdit.stdout)
+
+  ok(
+    (parsed?.hookSpecificOutput?.additionalContext || '').includes('[box-spec]'),
+    'hook: нарушение помечено id стандарта [box-spec] (связь практика ↔ чекер)',
+    r.stdout
+  )
+
+  const badJson = run('node', [join(ROOT, 'hooks', 'standards-post-tool.mjs')], { input: '{not json' })
+  ok(badJson.status === 0 && badJson.stdout.trim() === '', 'hook: fail-open — битый JSON на stdin → exit 0, тишина', badJson.stdout)
+
+  const emptyStdin = run('node', [join(ROOT, 'hooks', 'standards-post-tool.mjs')], { input: '' })
+  ok(emptyStdin.status === 0 && emptyStdin.stdout.trim() === '', 'hook: fail-open — пустой stdin → exit 0, тишина', emptyStdin.stdout)
+
+  const noInput = run('node', [join(ROOT, 'hooks', 'standards-post-tool.mjs')], { input: '{}' })
+  ok(noInput.status === 0 && noInput.stdout.trim() === '', 'hook: payload без пути и команды → тишина', noInput.stdout)
+
+  const outside = run('node', [join(ROOT, 'hooks', 'standards-post-tool.mjs')], {
+    input: JSON.stringify({ cwd: FIX('bad'), tool_name: 'edit', tool_input: { file_path: '../../outside.txt' } }),
+  })
+  ok(outside.status === 0 && outside.stdout.trim() === '', 'hook: путь вне зон стандартов → тишина', outside.stdout)
+
+  // Бюджет времени: не-матчинг пути ~0.12–0.19 с и матчинг (spawn чекеров) ~0.14 с
+  // на эталонной машине; порог с запасом — ловит регрессию, не флейкает на CI.
+  for (const [name, payload] of [
+    ['вне зон', { cwd: FIX('good'), tool_name: 'edit', tool_input: { file_path: 'src/main.go' } }],
+    ['в зоне', { cwd: FIX('good'), tool_name: 'edit', tool_input: { file_path: 'api-specification/openapi.yaml' } }],
+  ]) {
+    const t0 = process.hrtime.bigint()
+    run('node', [join(ROOT, 'hooks', 'standards-post-tool.mjs')], { input: JSON.stringify(payload) })
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6
+    ok(ms < 750, `hook: время (${name}) < 750 мс — фактическое ${ms.toFixed(0)} мс`)
+  }
 }
 
 // ---------- 3. opencode-плагин напрямую ----------
@@ -280,6 +537,11 @@ const count = (s, needle) => s.split(needle).length - 1
     msg = e.message
   }
   ok(threw && msg.includes('✗'), 'plugin: edit на нарушенном файле → throw с ✗', msg)
+  ok(
+    msg.includes('skills `box-spec`') && !msg.includes('`api-spec`'),
+    'plugin: список скиллов из манифеста (дрейф api-spec закрыт)',
+    msg.slice(-300)
+  )
 }
 
 // ---------- 4. install.sh во временный каталог с подменным HOME ----------
@@ -347,6 +609,7 @@ const count = (s, needle) => s.split(needle).length - 1
 
     const agents = readFileSync(join(tmp, 'AGENTS.md'), 'utf8')
     ok(count(agents, 'dev-standards:start') === 1, 'install: AGENTS.md managed-блок ровно один')
+    ok(agents.includes('dev-standards:start v1') && agents.includes('dev-standards:end v1'), 'install: маркеры блока версионируются (v1)')
     ok(agents.includes('check-tbd') && agents.includes('Box-first'), 'install: доставлен актуальный эталон AGENTS.md')
 
     const gi = readFileSync(join(tmp, '.gitignore'), 'utf8')
@@ -361,6 +624,13 @@ const count = (s, needle) => s.split(needle).length - 1
       readFileSync(join(tmp, '.git', 'hooks', 'pre-commit'), 'utf8').includes('run-all.mjs') &&
         readFileSync(join(tmp, '.git', 'hooks', 'pre-commit'), 'utf8').includes('--report'),
       'install: pre-commit вызывает run-all в report-режиме'
+    )
+    ok(
+      (() => {
+        const pc = readFileSync(join(tmp, '.git', 'hooks', 'pre-commit'), 'utf8')
+        return pc.includes('tools/generate.mjs') && pc.includes('--check')
+      })(),
+      'install: pre-commit проверяет свежесть артефактов standards-репозитория'
     )
 
     // Идемпотентность: второй прогон не создаёт дублей
@@ -377,6 +647,19 @@ const count = (s, needle) => s.split(needle).length - 1
     const agents2 = readFileSync(join(tmp, 'AGENTS.md'), 'utf8')
     ok(count(agents2, 'dev-standards:start') === 1, 'install: идемпотентность — managed-блок один')
     ok(agents2.includes('check-tbd'), 'install: идемпотентность — эталон в блоке сохранён')
+
+    // миграция: проект, установленный до v0.5 (маркеры без версии), обновляется на v1
+    writeFileSync(
+      join(tmp, 'AGENTS.md'),
+      agents2.replaceAll('dev-standards:start v1', 'dev-standards:start').replaceAll('dev-standards:end v1', 'dev-standards:end')
+    )
+    const r3 = run('bash', args, { env })
+    ok(r3.status === 0, 'install: прогон поверх legacy-маркеров exit 0', r3.stderr)
+    const agents3 = readFileSync(join(tmp, 'AGENTS.md'), 'utf8')
+    ok(
+      agents3.includes('dev-standards:start v1') && count(agents3, 'dev-standards:start') === 1 && agents3.includes('Box-first'),
+      'install: старый блок заменён на v1, содержимое обновлено, дублей нет'
+    )
     const oc2 = JSON.parse(readFileSync(ocPath, 'utf8'))
     ok(oc2.plugin.filter((p) => p.includes('standards-guard')).length === 1, 'install: идемпотентность — plugin-запись одна')
   } finally {

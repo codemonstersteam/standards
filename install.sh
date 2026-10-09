@@ -53,9 +53,13 @@ fi
 # ---------- AGENTS.md: managed-блок = эталон AGENTS.md этого репозитория ----------
 # Содержимое берётся из $SH/AGENTS.md (единственный источник истины) и
 # оборачивается маркерами; при повторной установке блок заменяется целиком.
+# Маркеры версионируются (по образцу grafana/hatch): замена распознаёт и старые
+# маркеры без версии (миграция проектов, установленных до v0.5), и актуальные v1.
 AGENTS="$PROJ/AGENTS.md"
-START="<!-- dev-standards:start -->"
-END="<!-- dev-standards:end -->"
+START="<!-- dev-standards:start v1 -->"
+END="<!-- dev-standards:end v1 -->"
+START_OLD="<!-- dev-standards:start -->"
+END_OLD="<!-- dev-standards:end -->"
 BLOCK="$START
 $(cat "$SH/AGENTS.md")
 $END"
@@ -63,10 +67,10 @@ BLOCKFILE="$PROJ/.dev-standards-block.tmp"
 printf '%s\n' "$BLOCK" > "$BLOCKFILE"
 if [ -f "$AGENTS" ] && grep -q 'dev-standards:start' "$AGENTS"; then
   # BSD awk (macOS) не принимает многострочный -v, поэтому блок читается из файла
-  awk -v s="$START" -v e="$END" -v bf="$BLOCKFILE" '
+  awk -v s="$START" -v e="$END" -v so="$START_OLD" -v eo="$END_OLD" -v bf="$BLOCKFILE" '
     BEGIN { p = 1 }
-    $0 == s { while ((getline l < bf) > 0) print l; close(bf); p = 0; next }
-    $0 == e { p = 1; next }
+    $0 == s || $0 == so { while ((getline l < bf) > 0) print l; close(bf); p = 0; next }
+    $0 == e || $0 == eo { p = 1; next }
     p
   ' "$AGENTS" > "$AGENTS.tmp" && mv "$AGENTS.tmp" "$AGENTS"
 else
@@ -174,6 +178,8 @@ if [ "$PRE_COMMIT" = 1 ]; then
   cat > "$PROJ/.git/hooks/pre-commit" <<EOF
 #!/usr/bin/env bash
 # dev-standards: детерминированные проверки до коммита (режим: $RUN_MODE)
+# + свежесть артефактов этого репозитория стандартов (правки — только в rules/)
+node "$SH/tools/generate.mjs" --check
 node "$SH/checks/run-all.mjs" "$PROJ" --$RUN_MODE
 EOF
   chmod +x "$PROJ/.git/hooks/pre-commit"

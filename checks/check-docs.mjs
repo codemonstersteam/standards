@@ -7,6 +7,16 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
+// Что проверяет чекер — источник для генератора скиллов (tools/generate.mjs).
+export const meta = {
+  what:
+    '`check-docs` — при существующем контракте: README существует,\nсодержит fenced pipe-блок и секцию таблицы отказов (warn).',
+}
+if (process.argv.includes('--meta')) {
+  console.log(JSON.stringify(meta))
+  process.exit(0)
+}
+
 const root = resolve(process.argv[2] || process.cwd())
 const contract = [join(root, 'api-specification', 'openapi.yaml'), join(root, 'api-specification', 'openapi.yml')]
   .find((p) => existsSync(p))

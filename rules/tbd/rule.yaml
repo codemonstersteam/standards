@@ -1,0 +1,48 @@
+# Источник правды стандарта tbd. Артефакты генерируются:
+# node tools/generate.mjs. Проза — в prose/ (howto, rationale).
+id: tbd
+name: tbd
+title: Trunk-Based Development
+description: >-
+  Trunk-Based Development — модель ветвления. Использовать при создании веток,
+  коммитах и подготовке PR. Частично проверяется check-tbd (коммит в trunk,
+  размер диффа, возраст ветки).
+summary: Trunk-Based Development
+enforcement: hybrid
+sections:
+  - rules:tbd
+  - checks
+  - legacy
+  - howto.md
+  - rationale.md
+rule_groups:
+  tbd:
+    heading: "## Правила"
+    items:
+      - |-
+        Один долгоживущий `trunk` (main/master). Feature-ветки режутся **только от
+        свежего trunk** — не от других feature-веток, не от «вчерашней» ветки.
+      - |-
+        Ветка живёт **≤ 2 дней** (багфикс ≤ 1). Не успеваешь — режь задачу меньше,
+        а не ветку длиннее.
+      - |-
+        Один тикет = один PR, дифф **≤ 600 строк** (и желательно ≤ 10 файлов).
+      - |-
+        Напрямую в trunk не коммитим — только через PR. **Мержит человек**: агент
+        PR не мержит; зелёный CI и «ок» — не основание.
+      - |-
+        **CI красный — не пушим**: чинить локально, фиксами в ту же ветку.
+        Незаконченная работа прячется за тогглом (см. `release`), а не живёт в
+        долгой ветке.
+legacy: |-
+  Если работа идёт в долгоживущей ветке — не ломай процесс команды мгновенно:
+  влей её, следующие ветки режь по правилу.
+checks_section:
+  heading: "## Что проверяет скрипт (check-tbd)"
+  join: "newline"
+checks:
+  - check: check-tbd
+    paths: []
+    trigger: git-commit
+    severity: warn
+stop: []

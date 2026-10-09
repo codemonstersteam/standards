@@ -40,7 +40,7 @@ function collectViolations(input, cwd) {
 const note = (violations) =>
   `[dev-standards] Нарушения стандартов:\n` +
   violations.map((v) => `  ${v}`).join('\n') +
-  `\nИсправь нарушения в этом же ходу. Подробности правил: skills box-spec, component-tests, modules, tbd, release.`
+  `\nИсправь нарушения в этом же ходу. Подробности правил: skills ${loadManifest().standards.map((s) => s.id).join(', ')}.`
 
 export default function register(pi) {
   pi.on('tool_result', async (event) => {

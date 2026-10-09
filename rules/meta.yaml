@@ -1,0 +1,8 @@
+# Мета источника правил rules/. Артефакты генерируются из этого каталога
+# (skills/*/SKILL.md, standards.json, footer AGENTS.md, version package.json):
+#   node tools/generate.mjs          — перегенерация
+#   node tools/generate.mjs --check  — свежесть артефактов (exit 1 при дрейфе)
+version: 0.5.0
+order: [box-spec, component-tests, modules, tbd, release]
+manifest_comment: |-
+  Манифест стандартов dev-standards. Генерируется из rules/ (node tools/generate.mjs) — правки только в источнике. JSON — валидный подсет YAML: так все скрипты остаются zero-dep. enforcement: script | model | hybrid; paths — glob-маппинг «изменённый файл → какие проверки запускать»; severity: error роняет strict-режим, warn — только замечание. Проверки без paths (tbd) запускаются из run-all/pre-commit и хуком по git commit. langs — ограничение языка для языковых проверок.

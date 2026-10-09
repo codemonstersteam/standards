@@ -29,13 +29,14 @@ async function main() {
   const cwd = typeof payload.cwd === 'string' ? payload.cwd : process.cwd()
 
   const violations = []
+  const manifest = loadManifest() // список скиллов для подсказки — из манифеста, без хардкода
   if (filePath) {
     const abs = resolve(cwd, filePath)
     const projectRoot = findProjectRoot(dirname(abs), cwd)
     if (!projectRoot) process.exit(0)
     const rel = relative(projectRoot, abs)
     if (rel.startsWith('..')) process.exit(0) // правка вне проекта
-    for (const std of loadManifest().standards) {
+    for (const std of manifest.standards) {
       for (const check of std.checks ?? []) {
         if (!pathMatches(check.paths, rel)) continue
         const { errors } = runCheck(check.check, projectRoot)
@@ -55,10 +56,11 @@ async function main() {
   }
   if (violations.length === 0) process.exit(0)
 
+  const skillIds = manifest.standards.map((s) => s.id).join(', ')
   const additionalContext =
     `[dev-standards] Нарушения стандартов:\n` +
     violations.map((v) => `  ${v}`).join('\n') +
-    `\nИсправь нарушения в этом же ходу. Подробности правил: skills box-spec, component-tests, modules, tbd, release.`
+    `\nИсправь нарушения в этом же ходу. Подробности правил: skills ${skillIds}.`
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {

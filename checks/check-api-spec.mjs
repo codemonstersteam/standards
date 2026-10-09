@@ -7,6 +7,16 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 
+// Что проверяет чекер — источник для генератора скиллов (tools/generate.mjs).
+export const meta = {
+  what:
+    '`check-api-spec` — контракт существует, `openapi: 3.x`, `paths:`, `responses:`,\n`x-frozen:`.',
+}
+if (process.argv.includes('--meta')) {
+  console.log(JSON.stringify(meta))
+  process.exit(0)
+}
+
 const argv = process.argv.slice(2)
 const root = resolve(argv.find((a) => !a.startsWith('--')) || process.cwd())
 const specIdx = argv.indexOf('--spec')

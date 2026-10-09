@@ -6,6 +6,16 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { parseFeature, walkFiles } from '../lib/common.mjs'
 
+// Что проверяет чекер — источник для генератора скиллов (tools/generate.mjs).
+export const meta = {
+  what:
+    '`check-component-tests` — все бизнес-сценарии `@wip`, есть `@smoke`, нет дублей\nназваний, число сценариев = N из дизайна (мягкий пропуск), рекурсивный поиск\n`component-tests/**/*.feature`.',
+}
+if (process.argv.includes('--meta')) {
+  console.log(JSON.stringify(meta))
+  process.exit(0)
+}
+
 const root = resolve(process.argv[2] || process.cwd())
 const ctDir = join(root, 'component-tests')
 const errors = []

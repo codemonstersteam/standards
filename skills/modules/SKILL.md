@@ -77,6 +77,8 @@ description: Проектирование модулей — 1 вход/1 вых
 
 ## Основание
 
-Wirth (структурное программирование), Parnas (модуль скрывает решение),
-Meyer (DbC: пред/постусловия), Wlaschin (ROP, «making illegal states
-unrepresentable»).
+Wirth (структурное программирование), Parnas (модуль скрывает решение;
+https://doi.org/10.1145/361598.361623), Meyer (DbC: пред/постусловия),
+Wlaschin (ROP, «making illegal states unrepresentable»;
+https://fsharpforfunandprofit.com/rop/).
+<!-- dev-standards:generated from rules/modules sha256:961f0c8a dev-standards@v0.5.0 — не редактировать: измени источник и запусти node tools/generate.mjs -->

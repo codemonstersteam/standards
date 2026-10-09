@@ -6,6 +6,21 @@
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
+// Что проверяет чекер — источник для генератора скиллов (tools/generate.mjs).
+export const meta = {
+  what: [
+    'коммит напрямую в trunk/main/master — запрещено;',
+    'дифф ветки против trunk > 600 добавленных строк;',
+    'возраст ветки (от первого коммита ветки) > 2 дней.',
+  ],
+  notes:
+    '«Ветка от ветки» скриптом не ловится — держи правило сознательно. Не git-репозиторий —\nпроверка мягко пропускается.',
+}
+if (process.argv.includes('--meta')) {
+  console.log(JSON.stringify(meta))
+  process.exit(0)
+}
+
 const root = resolve(process.argv[2] || process.cwd())
 const errors = []
 const git = (args) => spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' })

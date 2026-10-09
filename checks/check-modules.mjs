@@ -7,6 +7,16 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
+// Что проверяет чекер — источник для генератора скиллов (tools/generate.mjs).
+export const meta = {
+  what:
+    '`check-modules` — в каждом `internal/<slug>/` ровно одна точка входа\n(`index/handler/request/usecase`), `shared` — исключение; нет `internal/` — skip.',
+}
+if (process.argv.includes('--meta')) {
+  console.log(JSON.stringify(meta))
+  process.exit(0)
+}
+
 const root = resolve(process.argv[2] || process.cwd())
 const internalDir = join(root, 'internal')
 const errors = []

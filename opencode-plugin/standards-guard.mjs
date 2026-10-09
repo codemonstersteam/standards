@@ -114,10 +114,11 @@ export const StandardsGuard = async ({ directory, worktree } = {}) => {
 
         const unique = [...new Set(violations)]
         if (unique.length > 0) {
+          const skillIds = loadManifest().standards.map((s) => `\`${s.id}\``).join(', ')
           throw new Error(
             `[dev-standards] Нарушения стандартов:\n` +
               unique.map((v) => `  ${v}`).join('\n') +
-              `\nИсправь нарушения до продолжения. Подробности: skills \`api-spec\`, \`component-tests\`.`
+              `\nИсправь нарушения до продолжения. Подробности: skills ${skillIds}.`
           )
         }
       } catch (e) {
